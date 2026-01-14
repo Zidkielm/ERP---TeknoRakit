@@ -156,8 +156,51 @@ const createWindow = () => {
     }
 }
 
-// --- CRUD PRODUK ---
+// --- [BARU] UPDATE USER ---
+async function updateUser(userData) {
+    const client = new Client(dbConfig)
+    try {
+        await client.connect()
 
+        // Logika Password:
+        // Jika admin mengisi password baru, update passwordnya.
+        // Jika kosong, pakai password lama (jangan diubah).
+        let query, values
+
+        if (userData.password) {
+            // Update SEMUA termasuk password
+            query = `UPDATE users SET username=$1, password=$2, fullname=$3, role=$4 WHERE user_id=$5`
+            values = [userData.username, userData.password, userData.fullName, userData.role, userData.user_id]
+        } else {
+            // Update data profil saja, PASSWORD TETAP
+            query = `UPDATE users SET username=$1, fullname=$2, role=$3 WHERE user_id=$4`
+            values = [userData.username, userData.fullName, userData.role, userData.user_id]
+        }
+
+        await client.query(query, values)
+        await client.end()
+        return {success: true}
+    } catch (err) {
+        console.error('Update User Error:', err)
+        return {success: false, error: err.message}
+    }
+}
+
+// --- [BARU] DELETE USER ---
+async function deleteUser(userId) {
+    const client = new Client(dbConfig)
+    try {
+        await client.connect()
+        // Hapus user berdasarkan ID
+        await client.query('DELETE FROM users WHERE user_id = $1', [userId])
+        await client.end()
+        return {success: true}
+    } catch (err) {
+        return {success: false, error: 'Gagal hapus user (Mungkin data sedang dipakai).'}
+    }
+}
+
+// --- CRUD PRODUK ---
 // 1. CREATE (Sudah ada, pastikan seperti ini)
 async function createProduct(data) {
     const client = new Client(dbConfig)
@@ -249,8 +292,9 @@ app.on('ready', () => {
     ipcMain.handle('update-product', async (e, data) => await updateProduct(data))
     ipcMain.handle('delete-product', async (e, id) => await deleteProduct(id))
 
-    // ipcMain.handle('get-vendors', async () => await getVendors())
-    // ipcMain.handle('get-products', async () => await getProducts())
+    // Handler update & delete user
+    ipcMain.handle('update-user', async (e, data) => await updateUser(data)) // BARU
+    ipcMain.handle('delete-user', async (e, id) => await deleteUser(id)) // BARU
 
     createWindow()
 })
