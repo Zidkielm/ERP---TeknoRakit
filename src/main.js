@@ -45,12 +45,46 @@ async function getAllUsers() {
     try {
         await client.connect()
         // Ambil semua user KECUALI password (privasi)
-        const res = await client.query('SELECT user_id, username, full_name, role, created_at FROM users ORDER BY user_id ASC')
+        const res = await client.query('SELECT user_id, username, fullname, role, created_at FROM users ORDER BY user_id ASC')
         await client.end()
         return res.rows
     } catch (err) {
         console.error('Error Get Users:', err)
         return []
+    }
+}
+
+// --- FUNGSI BARU: DASHBOARD STATS ---
+async function getDashboardStats() {
+    const client = new Client(dbConfig)
+    try {
+        await client.connect()
+
+        // Kita jalankan banyak query sekaligus (Parallel) biar cepat
+        const [resUsers, resProducts, resLowStock, resPO, resSO, resWO] = await Promise.all([
+            client.query('SELECT COUNT(*) AS total FROM users'),
+            client.query('SELECT COUNT(*) AS total FROM products'),
+            client.query('SELECT COUNT(*) AS total FROM products WHERE stock_qty <= min_stock'),
+            client.query("SELECT COUNT(*) AS total FROM purchase_orders WHERE status = 'ORDERED'"),
+            client.query("SELECT COUNT(*) AS total FROM sales_orders WHERE status = 'CONFIRMED'"),
+            client.query("SELECT COUNT(*) AS total FROM work_orders WHERE status IN ('PLANNED', 'IN_PROGRESS')"),
+        ])
+
+        await client.end()
+        const parseCount = (res) => {
+            return res.rows.length > 0 ? parseInt(res.rows[0].total) : 0
+        }
+        return {
+            users: parseCount(resUsers),
+            products: parseCount(resProducts),
+            lowStock: parseCount(resLowStock),
+            pendingPO: parseCount(resPO),
+            pendingSO: parseCount(resSO),
+            activeWO: parseCount(resWO),
+        }
+    } catch (err) {
+        console.error('Error Stats:', err)
+        return {users: 0, products: 0, lowStock: 0, pendingPO: 0, pendingSO: 0, activeWO: 0}
     }
 }
 
@@ -60,7 +94,7 @@ async function createUser(userData) {
     try {
         await client.connect()
         const query = `
-      INSERT INTO users (username, password, full_name, role)
+      INSERT INTO users (username, password, fullname, role)
       VALUES ($1, $2, $3, $4)
       RETURNING *
     `
@@ -88,7 +122,7 @@ async function getVendors() {
     }
 }
 
-// --- FUNGSI 2: AMBIL DATA PRODUK (BARU) ---
+// --- FUNGSI 2: AMBIL DATA PRODUK ---
 async function getProducts() {
     const client = new Client(dbConfig)
     try {
@@ -122,6 +156,59 @@ const createWindow = () => {
     }
 }
 
+// --- CRUD PRODUK ---
+
+// 1. CREATE (Sudah ada, pastikan seperti ini)
+async function createProduct(data) {
+    const client = new Client(dbConfig)
+    try {
+        await client.connect()
+        // Default stok 0 saat buat baru
+        const query = `INSERT INTO products (sku, name, type, stock_qty, min_stock, unit, price) VALUES ($1, $2, $3, 0, $4, $5, $6) RETURNING *`
+        const values = [data.sku, data.name, data.type, data.min_stock, data.unit, data.price]
+        await client.query(query, values)
+        await client.end()
+        return {success: true}
+    } catch (err) {
+        console.error(err)
+        return {success: false, error: err.message}
+    }
+}
+
+// 2. UPDATE (Edit Data Barang)
+async function updateProduct(data) {
+    const client = new Client(dbConfig)
+    try {
+        await client.connect()
+        // PERHATIKAN: Kita TIDAK update stock_qty di sini demi keamanan data
+        const query = `
+      UPDATE products 
+      SET sku=$1, name=$2, type=$3, min_stock=$4, unit=$5, price=$6 
+      WHERE product_id=$7
+    `
+        const values = [data.sku, data.name, data.type, data.min_stock, data.unit, data.price, data.product_id]
+        await client.query(query, values)
+        await client.end()
+        return {success: true}
+    } catch (err) {
+        return {success: false, error: err.message}
+    }
+}
+
+// 3. DELETE (Hapus Barang)
+async function deleteProduct(productId) {
+    const client = new Client(dbConfig)
+    try {
+        await client.connect()
+        await client.query('DELETE FROM products WHERE product_id = $1', [productId])
+        await client.end()
+        return {success: true}
+    } catch (err) {
+        // Biasanya error karena barang sudah dipakai di transaksi (Foreign Key constraint)
+        return {success: false, error: 'Gagal hapus! Barang ini sudah pernah dipakai transaksi.'}
+    }
+}
+
 app.on('ready', () => {
     // Hapus handler lama jika ada (Tips Pro untuk hindari error handler ganda saat reload)
     ipcMain.removeHandler('login-user')
@@ -129,11 +216,14 @@ app.on('ready', () => {
     ipcMain.removeHandler('get-products')
     ipcMain.removeHandler('get-users')
     ipcMain.removeHandler('create-user')
+    ipcMain.removeHandler('get-stats')
 
     // Daftarkan Handler Vendor
     ipcMain.handle('get-vendors', async () => {
         return await getVendors()
     })
+
+    ipcMain.handle('get-stats', async () => await getDashboardStats())
 
     // Daftarkan Handler Produk
     ipcMain.handle('get-products', async () => {
@@ -145,6 +235,19 @@ app.on('ready', () => {
         // credentials adalah object { username: '...', password: '...' }
         return await loginUser(credentials.username, credentials.password)
     })
+
+    ipcMain.handle('get-users', async () => {
+        return await getAllUsers()
+    })
+
+    ipcMain.handle('create-user', async (e, userData) => {
+        return await createUser(userData)
+    })
+
+    //Handler CUD
+    ipcMain.handle('create-product', async (e, data) => await createProduct(data))
+    ipcMain.handle('update-product', async (e, data) => await updateProduct(data))
+    ipcMain.handle('delete-product', async (e, id) => await deleteProduct(id))
 
     // ipcMain.handle('get-vendors', async () => await getVendors())
     // ipcMain.handle('get-products', async () => await getProducts())
