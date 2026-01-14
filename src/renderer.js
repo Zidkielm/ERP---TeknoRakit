@@ -1,5 +1,5 @@
 // --- VARIABEL GLOBAL ---
-let currentUserRole = '' // [BARU] Untuk menyimpan role user yang sedang login
+let currentUserRole = ''
 
 // --- ELEMEN HTML ---
 const loginView = document.getElementById('login-view')
@@ -9,23 +9,43 @@ const inpUser = document.getElementById('inp-username')
 const inpPass = document.getElementById('inp-password')
 const errorMsg = document.getElementById('login-error')
 
-// --- FUNGSI UTAMA: LOAD DATA USER ---
+// ==========================================================
+// 1. BAGIAN MANAJEMEN USER (ADMIN)
+// ==========================================================
+
 const loadUsers = async () => {
     const tableBody = document.getElementById('table-users-body')
+    if (!tableBody) return
+
     tableBody.innerHTML = '<tr><td colspan="5">Loading...</td></tr>'
     try {
         const users = await window.api.fetchUsers()
-        document.getElementById('stat-user-count').innerText = users.length
+        if (document.getElementById('stat-user-count')) {
+            document.getElementById('stat-user-count').innerText = users.length
+        }
 
         tableBody.innerHTML = ''
         users.forEach((u) => {
+            // Encode data user untuk dikirim ke tombol edit
+            const userStr = encodeURIComponent(
+                JSON.stringify({
+                    user_id: u.user_id,
+                    username: u.username,
+                    fullname: u.fullname,
+                    role: u.role,
+                })
+            )
+
             tableBody.innerHTML += `
                 <tr>
                     <td>${u.user_id}</td>
                     <td><b>${u.username}</b></td>
                     <td>${u.fullname || '-'}</td>
                     <td><span style="padding:3px 8px; background:#ddd; border-radius:4px; font-size:12px;">${u.role}</span></td>
-                    <td>${new Date(u.created_at).toLocaleDateString()}</td>
+                    <td style="text-align:center;">
+                        <button onclick="editUserTrigger('${userStr}')" style="background:#f39c12; color:white; border:none; padding:4px 8px; border-radius:4px; cursor:pointer; margin-right:5px;">✏️</button>
+                        <button onclick="deleteUserTrigger(${u.user_id}, '${u.username}')" style="background:#c0392b; color:white; border:none; padding:4px 8px; border-radius:4px; cursor:pointer;">🗑️</button>
+                    </td>
                 </tr>
             `
         })
@@ -34,9 +54,99 @@ const loadUsers = async () => {
     }
 }
 
-// --- FUNGSI LOAD VENDOR ---
+// --- LOGIKA MODAL USER ---
+
+// 1. Buka Modal Tambah (Create)
+window.openUserModal = () => {
+    const modal = document.getElementById('modal-user')
+    modal.style.display = 'flex'
+    document.getElementById('modal-user-title').innerText = 'Tambah User Baru'
+
+    // Reset Form
+    document.getElementById('user-id-input').value = '' // ID Kosong = Create
+    document.getElementById('user-username').value = ''
+    document.getElementById('user-password').value = ''
+    document.getElementById('user-fullname').value = ''
+    document.getElementById('user-role').value = 'WAREHOUSE'
+}
+
+// 2. Buka Modal Edit (Update)
+window.editUserTrigger = (userStr) => {
+    const u = JSON.parse(decodeURIComponent(userStr))
+    const modal = document.getElementById('modal-user')
+
+    modal.style.display = 'flex'
+    document.getElementById('modal-user-title').innerText = 'Edit User: ' + u.username
+
+    // Isi Form dengan data lama
+    document.getElementById('user-id-input').value = u.user_id
+    document.getElementById('user-username').value = u.username
+    document.getElementById('user-fullname').value = u.fullname || ''
+    document.getElementById('user-role').value = u.role
+
+    // Password dikosongkan (placeholder memberi petunjuk)
+    document.getElementById('user-password').value = ''
+}
+
+// 3. Tutup Modal
+window.closeUserModal = () => {
+    document.getElementById('modal-user').style.display = 'none'
+}
+
+// 4. Tombol Simpan di Modal
+const btnSaveUserModal = document.getElementById('btn-save-user-modal')
+if (btnSaveUserModal) {
+    btnSaveUserModal.addEventListener('click', async () => {
+        const id = document.getElementById('user-id-input').value
+
+        const data = {
+            user_id: id,
+            username: document.getElementById('user-username').value,
+            password: document.getElementById('user-password').value,
+            fullName: document.getElementById('user-fullname').value,
+            role: document.getElementById('user-role').value,
+        }
+
+        if (!data.username) return alert('Username wajib diisi!')
+
+        // Validasi Password: Wajib jika Create, Opsional jika Update
+        if (!id && !data.password) return alert('Password wajib diisi untuk user baru!')
+
+        let result
+        if (id) {
+            // MODE UPDATE
+            result = await window.api.updateUser(data)
+        } else {
+            // MODE CREATE
+            result = await window.api.createUser(data)
+        }
+
+        if (result.success) {
+            alert(id ? 'User berhasil diupdate!' : 'User berhasil dibuat!')
+            window.closeUserModal()
+            loadUsers() // Refresh tabel
+        } else {
+            alert('Gagal: ' + result.error)
+        }
+    })
+}
+
+// 5. Hapus User (Tetap Sama)
+window.deleteUserTrigger = async (id, name) => {
+    if (confirm(`Yakin ingin menghapus user "${name}"?`)) {
+        const res = await window.api.deleteUser(id)
+        if (res.success) loadUsers()
+        else alert('Gagal menghapus: ' + res.error)
+    }
+}
+
+// ==========================================================
+// 2. BAGIAN MASTER DATA (PRODUK & VENDOR)
+// ==========================================================
+
 const loadVendors = async () => {
     const tableBody = document.getElementById('table-vendors-body')
+    if (!tableBody) return
     try {
         const vendors = await window.api.fetchVendors()
         tableBody.innerHTML = ''
@@ -46,12 +156,12 @@ const loadVendors = async () => {
     } catch (e) {}
 }
 
-// --- [UPDATE BESAR] FUNGSI LOAD PRODUCTS DENGAN CRUD ---
 const loadProducts = async () => {
     const tableBody = document.getElementById('table-products-body')
-    const btnAdd = document.getElementById('btn-add-product') // Pastikan tombol ini ada di HTML
+    const btnAdd = document.getElementById('btn-add-product')
+    if (!tableBody) return
 
-    // 1. Logika Tombol Tambah (Hanya Admin & Gudang)
+    // Logika Tombol Tambah
     if (['ADMIN', 'WAREHOUSE'].includes(currentUserRole)) {
         if (btnAdd) btnAdd.style.display = 'block'
     } else {
@@ -59,7 +169,6 @@ const loadProducts = async () => {
     }
 
     tableBody.innerHTML = '<tr><td colspan="6" style="text-align:center;">Sedang memuat data...</td></tr>'
-
     try {
         const products = await window.api.fetchProducts()
         tableBody.innerHTML = ''
@@ -70,7 +179,6 @@ const loadProducts = async () => {
         }
 
         products.forEach((p) => {
-            // Label Tipe
             const typeLabel =
                 p.type === 'FINISHED_GOOD'
                     ? '<span style="color:white; background:#27ae60; padding:2px 6px; border-radius:4px; font-size:11px;">Barang Jadi</span>'
@@ -78,53 +186,37 @@ const loadProducts = async () => {
 
             const price = new Intl.NumberFormat('id-ID', {style: 'currency', currency: 'IDR'}).format(p.price)
 
-            // 2. Logika Tombol Aksi (Edit/Hapus)
             let actionButtons = '<span style="color:#ccc;">-</span>'
-
-            // HANYA ADMIN & GUDANG YANG BOLEH EDIT/HAPUS
             if (['ADMIN', 'WAREHOUSE'].includes(currentUserRole)) {
-                // Kita bungkus data produk jadi string agar bisa dikirim ke fungsi edit
                 const dataStr = encodeURIComponent(JSON.stringify(p))
-
                 actionButtons = `
-                    <button onclick="editProduct('${dataStr}')" style="background:#ffdf00; color:white; border:none; padding:5px 10px; border-radius:4px; cursor:pointer; margin-right:5px;">✏️</button>
+                    <button onclick="editProduct('${dataStr}')" style="background:#f39c12; color:white; border:none; padding:5px 10px; border-radius:4px; cursor:pointer; margin-right:5px;">✏️</button>
                     <button onclick="deleteProductReq(${p.product_id})" style="background:#c0392b; color:white; border:none; padding:5px 10px; border-radius:4px; cursor:pointer;">🗑️</button>
                 `
             }
 
-            const row = `
+            tableBody.innerHTML += `
                 <tr>
-                    <td>${p.sku}</td>
-                    <td><b>${p.name}</b></td>
-                    <td>${typeLabel}</td>
-                    <td>${p.stock_qty} ${p.unit}</td>
-                    <td>${price}</td>
+                    <td>${p.sku}</td><td><b>${p.name}</b></td><td>${typeLabel}</td>
+                    <td>${p.stock_qty} ${p.unit}</td><td>${price}</td>
                     <td style="text-align:center;">${actionButtons}</td>
                 </tr>
             `
-            tableBody.innerHTML += row
         })
-
-        // Update Stats
         const statEl = document.getElementById('stat-product-count')
         if (statEl) statEl.innerText = products.length
     } catch (e) {
-        console.error('Gagal load products:', e)
-        tableBody.innerHTML = `<tr><td colspan="6" style="color:red; text-align:center;">Error: ${e.message}</td></tr>`
+        console.error(e)
     }
 }
 
-// --- [BARU] LOGIKA MODAL & CRUD ---
-
-// 1. Buka Modal Tambah (Create)
+// --- LOGIKA MODAL PRODUK ---
 window.openAddModal = () => {
     const modal = document.getElementById('modal-product')
     if (modal) {
         modal.style.display = 'flex'
         document.getElementById('modal-title').innerText = 'Tambah Produk Baru'
-
-        // Reset Form
-        document.getElementById('prod-id').value = '' // ID Kosong = Create
+        document.getElementById('prod-id').value = ''
         document.getElementById('prod-sku').value = ''
         document.getElementById('prod-name').value = ''
         document.getElementById('prod-type').value = 'RAW_MATERIAL'
@@ -134,16 +226,12 @@ window.openAddModal = () => {
     }
 }
 
-// 2. Buka Modal Edit (Update)
 window.editProduct = (dataStr) => {
-    const p = JSON.parse(decodeURIComponent(dataStr)) // Baca data dari tombol
+    const p = JSON.parse(decodeURIComponent(dataStr))
     const modal = document.getElementById('modal-product')
-
     if (modal) {
         modal.style.display = 'flex'
         document.getElementById('modal-title').innerText = 'Edit Produk'
-
-        // Isi Form dengan data lama
         document.getElementById('prod-id').value = p.product_id
         document.getElementById('prod-sku').value = p.sku
         document.getElementById('prod-name').value = p.name
@@ -151,22 +239,18 @@ window.editProduct = (dataStr) => {
         document.getElementById('prod-unit').value = p.unit
         document.getElementById('prod-min').value = p.min_stock
         document.getElementById('prod-price').value = p.price
-        // Catatan: Stok tidak ditampilkan di form edit agar tidak bisa diubah manual
     }
 }
 
-// 3. Tutup Modal
 window.closeProductModal = () => {
     const modal = document.getElementById('modal-product')
     if (modal) modal.style.display = 'none'
 }
 
-// 4. Aksi Simpan (Create / Update)
-const btnSave = document.getElementById('btn-save-product')
-if (btnSave) {
-    btnSave.addEventListener('click', async () => {
+const btnSaveProduct = document.getElementById('btn-save-product')
+if (btnSaveProduct) {
+    btnSaveProduct.addEventListener('click', async () => {
         const id = document.getElementById('prod-id').value
-
         const data = {
             product_id: id,
             sku: document.getElementById('prod-sku').value,
@@ -179,38 +263,30 @@ if (btnSave) {
 
         if (!data.sku || !data.name) return alert('SKU dan Nama wajib diisi!')
 
-        let result
-        if (id) {
-            // Kalau ada ID, berarti UPDATE
-            result = await window.api.updateProduct(data)
-        } else {
-            // Kalau ID kosong, berarti CREATE
-            result = await window.api.createProduct(data)
-        }
+        let result = id ? await window.api.updateProduct(data) : await window.api.createProduct(data)
 
         if (result.success) {
             alert('Berhasil disimpan!')
             window.closeProductModal()
-            loadProducts() // Refresh tabel
+            loadProducts()
         } else {
             alert('Gagal: ' + result.error)
         }
     })
 }
 
-// 5. Aksi Hapus (Delete)
 window.deleteProductReq = async (id) => {
-    if (confirm('Yakin ingin menghapus produk ini?')) {
+    if (confirm('Hapus produk ini?')) {
         const res = await window.api.deleteProduct(id)
-        if (res.success) {
-            loadProducts()
-        } else {
-            alert('Gagal menghapus: ' + res.error)
-        }
+        if (res.success) loadProducts()
+        else alert('Gagal menghapus: ' + res.error)
     }
 }
 
-// --- DASHBOARD WIDGET ---
+// ==========================================================
+// 3. BAGIAN DASHBOARD & LOGIN (PENTING JANGAN DIHAPUS)
+// ==========================================================
+
 const createWidget = (title, value, color, icon) => {
     return `
     <div style="background:${color}; color:white; padding:20px; border-radius:8px; box-shadow:0 4px 6px rgba(0,0,0,0.1); flex:1; min-width: 200px;">
@@ -226,7 +302,7 @@ const loadDashboard = async (role) => {
 
     let dashboardHTML = `
         <h1>Dashboard ${role}</h1>
-        <p style="margin-bottom:20px; color:#7f8c8d;">Ringkasan aktivitas operasional Anda.</p>
+        <p style="margin-bottom:20px; color:#7f8c8d;">Ringkasan aktivitas operasional.</p>
         <div style="display:flex; gap:20px; flex-wrap:wrap;">
     `
 
@@ -234,65 +310,31 @@ const loadDashboard = async (role) => {
         case 'ADMIN':
             dashboardHTML += createWidget('Total User', stats.users, '#9b59b6', '👥')
             dashboardHTML += createWidget('Total Produk', stats.products, '#2980b9', '📦')
-            dashboardHTML += createWidget('Stok Menipis', stats.lowStock, '#c0392b', '⚠️') // Satu widget merah
+            dashboardHTML += createWidget('Stok Menipis', stats.lowStock, '#c0392b', '⚠️')
             dashboardHTML += createWidget('PO Pending', stats.pendingPO, '#e67e22', '🚚')
             dashboardHTML += createWidget('WO Aktif', stats.activeWO, '#27ae60', '🔧')
             break
-
         case 'WAREHOUSE':
-            dashboardHTML += createWidget('Barang Masuk (PO)', stats.pendingPO, '#e67e22', '📥')
-            dashboardHTML += createWidget('Barang Keluar (SO)', stats.pendingSO, '#8e44ad', '📤')
+            dashboardHTML += createWidget('Barang Masuk', stats.pendingPO, '#e67e22', '📥')
+            dashboardHTML += createWidget('Barang Keluar', stats.pendingSO, '#8e44ad', '📤')
             dashboardHTML += createWidget('Stok Menipis', stats.lowStock, '#c0392b', '⚠️')
-            dashboardHTML += `</div><div style="margin-top:20px; padding:15px; background:#fff; border-left:5px solid #e67e22;">
-                <h3>📢 Reminder Gudang</h3>
-                <p>Segera proses penerimaan barang jika truk vendor sudah tiba.</p>
-            </div>`
             break
-
         case 'PURCHASING':
-            dashboardHTML += createWidget('Perlu Dibeli (Low Stock)', stats.lowStock, '#c0392b', '🛒')
-            dashboardHTML += createWidget('PO Sedang Jalan', stats.pendingPO, '#2980b9', 'truck')
-            dashboardHTML += createWidget('Total Vendor', '2', '#16a085', '🏭')
+            dashboardHTML += createWidget('Low Stock', stats.lowStock, '#c0392b', '🛒')
+            dashboardHTML += createWidget('PO Jalan', stats.pendingPO, '#2980b9', 'truck')
             break
-
         case 'PRODUCTION':
-            dashboardHTML += createWidget('Antrean Rakit (WO)', stats.activeWO, '#27ae60', '🔧')
-            dashboardHTML += createWidget('Stok Bahan Baku', 'Aman', '#2980b9', '✅')
+            dashboardHTML += createWidget('WO Aktif', stats.activeWO, '#27ae60', '🔧')
             break
-
         case 'SALES':
-            dashboardHTML += createWidget('Order Baru (SO)', stats.pendingSO, '#8e44ad', '💰')
-            dashboardHTML += createWidget('Target Bulan Ini', '80%', '#f1c40f', 'chart')
+            dashboardHTML += createWidget('Order Baru', stats.pendingSO, '#8e44ad', '💰')
             break
     }
-
     dashboardHTML += `</div>`
     container.innerHTML = dashboardHTML
 }
 
-// --- FUNGSI TAMBAH USER ---
-document.getElementById('btn-add-user').addEventListener('click', async () => {
-    const username = document.getElementById('new-username').value
-    const password = document.getElementById('new-password').value
-    const fullName = document.getElementById('new-fullname').value
-    const role = document.getElementById('new-role').value
-
-    if (!username || !password) return alert('Username & Password wajib diisi!')
-
-    const result = await window.api.createUser({username, password, fullName, role})
-
-    if (result.success) {
-        alert('User berhasil dibuat!')
-        loadUsers()
-        document.getElementById('new-username').value = ''
-        document.getElementById('new-password').value = ''
-        document.getElementById('new-fullname').value = ''
-    } else {
-        alert('Gagal membuat user: ' + result.error)
-    }
-})
-
-// --- CONFIG HAK AKSES ---
+// Hak Akses Menu
 const rolePermissions = {
     ADMIN: ['btn-menu-dashboard', 'btn-menu-users', 'btn-menu-products', 'btn-menu-vendors', 'btn-menu-po', 'btn-menu-so', 'btn-menu-wo'],
     WAREHOUSE: ['btn-menu-dashboard', 'btn-menu-products', 'btn-menu-vendors', 'btn-menu-po', 'btn-menu-so'],
@@ -301,12 +343,12 @@ const rolePermissions = {
     PRODUCTION: ['btn-menu-dashboard', 'btn-menu-products', 'btn-menu-wo'],
 }
 
-// --- REFRESH BUTTONS ---
+// Event Refresh
 document.getElementById('btn-refresh-users').addEventListener('click', loadUsers)
 document.getElementById('btn-refresh-vendors').addEventListener('click', loadVendors)
 document.getElementById('btn-refresh-products').addEventListener('click', loadProducts)
 
-// --- LOGIKA LOGIN (UPDATE) ---
+// --- LOGIKA LOGIN (INI YANG KEMUNGKINAN HILANG TADI) ---
 btnLogin.addEventListener('click', async () => {
     const username = inpUser.value
     const password = inpPass.value
@@ -320,28 +362,27 @@ btnLogin.addEventListener('click', async () => {
         const user = await window.api.login({username, password})
 
         if (user) {
-            // [UPDATE] SIMPAN ROLE KE GLOBAL VARIABLE
-            currentUserRole = user.role
-
-            // === LOGIN SUKSES ===
+            // === SUKSES ===
+            currentUserRole = user.role // SIMPAN ROLE
             loginView.style.display = 'none'
             dashboardView.style.display = 'flex'
-
             document.getElementById('span-role').innerText = user.role
 
+            // Atur Menu Sidebar
             const allowedMenus = rolePermissions[user.role] || []
-            const allMenus = document.querySelectorAll('[id^="btn-menu-"]')
-            allMenus.forEach((btn) => (btn.style.display = 'none'))
+            document.querySelectorAll('[id^="btn-menu-"]').forEach((btn) => (btn.style.display = 'none'))
             allowedMenus.forEach((menuId) => {
                 const btn = document.getElementById(menuId)
                 if (btn) btn.style.display = 'block'
             })
 
+            // Load Data
             loadDashboard(user.role)
             if (user.role === 'ADMIN') loadUsers()
             loadVendors()
-            loadProducts() // [PENTING] Load ulang agar logika tombol muncul
+            loadProducts()
         } else {
+            // === GAGAL ===
             errorMsg.style.display = 'block'
             setTimeout(() => {
                 inpUser.value = ''
@@ -351,7 +392,7 @@ btnLogin.addEventListener('click', async () => {
         }
     } catch (err) {
         console.error(err)
-        alert('System Error')
+        alert('System Error (Cek Console)')
     } finally {
         btnLogin.innerText = 'LOGIN'
     }
