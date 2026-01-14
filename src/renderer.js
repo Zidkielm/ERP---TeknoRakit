@@ -1,48 +1,69 @@
-// 1. Ambil elemen HTML yang mau kita mainkan
-const tableBody = document.getElementById('vendor-table-body');
-const btnRefresh = document.getElementById('btn-refresh');
+// --- ELEMEN HTML ---
+const loginView = document.getElementById('login-view')
+const dashboardView = document.getElementById('dashboard-view')
+const btnLogin = document.getElementById('btn-login')
+const inpUser = document.getElementById('inp-username')
+const inpPass = document.getElementById('inp-password')
+const errorMsg = document.getElementById('login-error')
+const roleDisplay = document.getElementById('user-role-display')
 
-// 2. Fungsi untuk mengambil dan menampilkan data
-const loadVendors = async () => {
+// --- FUNGSI RESET FORM (Membersihkan inputan) ---
+function resetForm() {
+    inpUser.value = ''
+    inpPass.value = ''
+    errorMsg.style.display = 'none'
+    inpUser.focus()
+}
+
+// --- FUNGSI LOGIN ---
+btnLogin.addEventListener('click', async () => {
+    const username = inpUser.value
+    const password = inpPass.value
+
+    // Jangan proses kalau kosong
+    if (!username || !password) return
+
+    btnLogin.innerText = 'Checking...'
+    errorMsg.style.display = 'none'
+
     try {
-        // Tampilkan pesan loading
-        tableBody.innerHTML = '<tr><td colspan="5">Loading data...</td></tr>';
+        // 1. Panggil API Login
+        const user = await window.api.login({username, password})
 
-        // Panggil Backend (lewat jembatan api)
-        // Perhatikan: window.api sesuai dengan yang kita buat di preload.js
-        const vendors = await window.api.fetchVendors();
+        if (user) {
+            // --- JIKA LOGIN SUKSES ---
+            console.log('Login Berhasil:', user)
 
-        // Bersihkan tabel sebelum diisi data baru
-        tableBody.innerHTML = '';
+            // A. Sembunyikan Login Form
+            loginView.style.display = 'none'
 
-        // Looping data dan buat baris tabel (TR) secara manual
-        vendors.forEach(vendor => {
-            const row = document.createElement('tr');
-            
-            row.innerHTML = `
-                <td>${vendor.vendor_id}</td>
-                <td>${vendor.name}</td>
-                <td>${vendor.phone}</td>
-                <td>${vendor.email || '-'}</td>
-                <td>${vendor.address || '-'}</td>
-            `;
-            
-            tableBody.appendChild(row);
-        });
+            // B. Tampilkan Dashboard
+            dashboardView.style.display = 'block'
 
-        if (vendors.length === 0) {
-            tableBody.innerHTML = '<tr><td colspan="5">Tidak ada data vendor.</td></tr>';
+            // C. Ubah Tulisan sesuai Role
+            // user.role berasal dari database (WAREHOUSE, PURCHASING, dll)
+            roleDisplay.innerText = `Anda masuk sebagai ${user.role}`
+        } else {
+            // === LOGIN GAGAL ===
+            errorMsg.style.display = 'block'
+            errorMsg.innerText = 'Username atau Password Salah!'
+
+            // Efek Getar (Opsional, biar keren dikit)
+            const box = document.querySelector('.login-box')
+            box.style.transform = 'translateX(5px)'
+            setTimeout(() => (box.style.transform = 'translateX(0)'), 100)
+            setTimeout(() => {
+                // Cek dulu, kalau user belum mulai ngetik ulang, baru dihapus
+                // (Biar kalau user cepet ngetik ulang, gak keganggu/kehapus tiba2)
+                if (errorMsg.style.display === 'block') {
+                    resetForm()
+                }
+            }, 2000)
         }
-
-    } catch (error) {
-        console.error("Error:", error);
-        tableBody.innerHTML = `<tr><td colspan="5" style="color:red">Error: ${error.message}</td></tr>`;
+    } catch (err) {
+        console.error('System Error:', err)
+        alert('Terjadi kesalahan sistem')
+    } finally {
+        btnLogin.innerText = 'LOGIN'
     }
-};
-
-// 3. Pasang Event Listener
-// Kalau tombol diklik, jalankan fungsi loadVendors
-btnRefresh.addEventListener('click', loadVendors);
-
-// Jalankan sekali saat aplikasi pertama kali jalan
-loadVendors();
+})
