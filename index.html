@@ -113,27 +113,16 @@
                 <div id="page-users" class="page-section">
                     <h1>Manajemen Pengguna</h1>
 
-                    <div class="table-container" style="margin-bottom: 20px; background: #ecf0f1">
-                        <h3>Tambah User Baru</h3>
-                        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr 1fr auto; gap: 10px; margin-top: 10px">
-                            <input type="text" id="new-username" placeholder="Username" style="padding: 8px" />
-                            <input type="password" id="new-password" placeholder="Password" style="padding: 8px" />
-                            <input type="text" id="new-fullname" placeholder="Nama Lengkap" style="padding: 8px" />
-                            <select id="new-role" style="padding: 8px">
-                                <option value="ADMIN">ADMIN</option>
-                                <option value="WAREHOUSE">GUDANG</option>
-                                <option value="PURCHASING">PURCHASING</option>
-                                <option value="SALES">SALES</option>
-                                <option value="PRODUCTION">PRODUKSI</option>
-                            </select>
-                            <button id="btn-add-user" style="background: #27ae60; color: white; border: none; padding: 8px 15px; cursor: pointer">
-                                + Simpan
-                            </button>
-                        </div>
-                    </div>
-
                     <div class="table-container">
-                        <button class="btn-action" id="btn-refresh-users" style="margin-bottom: 15px">Refresh List</button>
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 15px">
+                            <button
+                                onclick="openUserModal()"
+                                style="background: #2980b9; color: white; border: none; padding: 8px 15px; border-radius: 4px; cursor: pointer">
+                                + Tambah User
+                            </button>
+                            <button class="btn-action" id="btn-refresh-users">Refresh List</button>
+                        </div>
+
                         <table>
                             <thead>
                                 <tr>
@@ -141,7 +130,7 @@
                                     <th>Username</th>
                                     <th>Nama Lengkap</th>
                                     <th>Role</th>
-                                    <th>Terdaftar</th>
+                                    <th>Aksi</th>
                                 </tr>
                             </thead>
                             <tbody id="table-users-body"></tbody>
@@ -225,6 +214,7 @@
                 event.srcElement.classList.add('active')
             }
         </script>
+        <!-- Modal produk -->
         <div id="modal-product" class="modal-overlay" style="display: none">
             <div class="modal-box">
                 <h2 id="modal-title">Tambah Produk</h2>
@@ -264,6 +254,51 @@
                 <div style="margin-top: 20px; text-align: right">
                     <button onclick="closeProductModal()" style="background: #95a5a6; padding: 10px">Batal</button>
                     <button id="btn-save-product" style="background: #27ae60; padding: 10px">Simpan</button>
+                </div>
+            </div>
+        </div>
+        <!-- Modal user -->
+        <div id="modal-user" class="modal-overlay" style="display: none">
+            <div class="modal-box">
+                <h2 id="modal-user-title">Tambah User</h2>
+
+                <input type="hidden" id="user-id-input" />
+
+                <div class="form-group">
+                    <label>Username</label>
+                    <input type="text" id="user-username" placeholder="Username Login" />
+                </div>
+                <div class="form-group">
+                    <label>Password</label>
+                    <input type="password" id="user-password" placeholder="Password" />
+                    <small style="color: #7f8c8d; font-size: 11px">*Kosongkan jika tidak ingin mengubah password (saat Edit)</small>
+                </div>
+                <div class="form-group">
+                    <label>Nama Lengkap</label>
+                    <input type="text" id="user-fullname" placeholder="Nama Pegawai" />
+                </div>
+                <div class="form-group">
+                    <label>Role (Jabatan)</label>
+                    <select id="user-role">
+                        <option value="ADMIN">ADMIN (Full Akses)</option>
+                        <option value="WAREHOUSE">GUDANG (Stok)</option>
+                        <option value="PURCHASING">PURCHASING (Beli)</option>
+                        <option value="SALES">SALES (Jual)</option>
+                        <option value="PRODUCTION">PRODUKSI (Rakit)</option>
+                    </select>
+                </div>
+
+                <div style="margin-top: 20px; text-align: right">
+                    <button
+                        onclick="closeUserModal()"
+                        style="background: #95a5a6; padding: 10px; border: none; color: white; border-radius: 4px; cursor: pointer">
+                        Batal
+                    </button>
+                    <button
+                        id="btn-save-user-modal"
+                        style="background: #27ae60; padding: 10px; border: none; color: white; border-radius: 4px; cursor: pointer">
+                        Simpan
+                    </button>
                 </div>
             </div>
         </div>
